@@ -1,0 +1,138 @@
+# Snakemake SLURM profile configuration
+# Generic configuration - users should customize for their system
+samples:
+  # - test
+  - day0_1
+  - day0_2
+  # # #- day0_4_DN1
+  # # #- day0_DN2
+  - day14_20_2
+  - day14_4_1
+  - day14_80_1
+  - day14_80_2
+  - day30_20_2
+  - day30_4_1
+  - day30_80_1
+  - day30_80_2
+  - day3_20_1
+  - day3_20_2
+  - day3_4_1
+  - day3_4_2
+  - day3_80_1
+  - day3_80_2
+  - day7_20_1
+  - day7_20_2
+  - day7_4_1
+  - day7_4_2
+  - day7_80_1
+  - day7_80_2
+
+
+
+#parameter setting
+runtime: 2880
+slurm_account: "research-ceg-wm"
+regular_memory: 3900
+regular_partition: "compute"
+
+high_memory: 16000
+high_partition: "memory"
+
+
+#each step parameter setting
+fastp:
+  threads: 8
+  qualified_quality_phred: 20
+  length_required: 20
+
+bowtie2_build:
+  threads: 2
+
+bowtie2_removal:
+  threads: 4
+
+spades:
+  threads: 16
+  memory: 256
+  k_values: "21,33,55,77,101,121"
+
+seqkit:
+  threads: 4
+  min_length: 5000
+  nr_width: 10
+
+checkv:
+  threads: 4
+
+genomad:
+  threads: 16
+
+virsorter2:
+  threads: 16
+  min_length: 5000
+  min_score: 0.5
+  groups: "dsDNAphage,NCLDV,lavidaviridae"
+  database: "/scratch/xunwang/freshwater_preservation/database/db"
+
+deepvirfinder:
+  threads: 12
+  min_length: 3000
+  dvf_path: "/scratch/xunwang/software/DeepVirFinder/dvf.py"
+  dvf_models: "/scratch/xunwang/software/DeepVirFinder/models"
+
+merge_filter:
+  threads: 2
+
+cluster_index_build:
+  threads: 4
+  runtime: 1440
+  mem_mb_per_cpu: 3900
+  partition: "compute"
+
+bowtie2_alignment:
+  threads: 16
+  runtime: 7200
+  mem_mb_per_cpu: 2000
+  partition: "compute"
+
+coverm:
+  threads: 4
+  runtime: 1440
+  mem_mb_per_cpu: 3900
+  partition: "compute"
+
+
+
+
+
+
+
+#database path
+bowtie2_index: "database/T7_ref/GCF_000844825.1_ViralProj14460_genomic.fna"
+checkv_db: "database/checkv-db-v1.5/"
+genomad_db: "/scratch/xunwang/freshwater_preservation/database/genomad_auto/genomad_db"
+
+# Script paths
+merge_script: "script/merge_3_viral_identification.py"
+checkv_filter_script: "script/checkv_sec_filter.py"
+checkv_scripts: "script/checkv"
+
+
+executor: slurm
+jobs: 50
+use-conda: true
+conda-prefix: conda_envs  # Will be created in working directory
+rerun-incomplete: true
+printshellcmds: true
+keep-going: true
+
+# Default resources for all jobs
+# Users should modify slurm_account to match their SLURM account
+default-resources:
+  - slurm_account="research-as-bt"
+  - slurm_partition="compute"
+  - runtime=7200
+  - mem_mb_per_cpu=3900
+  - cpus_per_task=8
+
+# Set threads for specific rules

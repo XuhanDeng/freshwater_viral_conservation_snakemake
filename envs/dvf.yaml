@@ -1,0 +1,12 @@
+name: dvf
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - python=3.8
+  - numpy
+  - pandas
+  - biopython
+  - scikit-learn
+  - tensorflow=2.4.0

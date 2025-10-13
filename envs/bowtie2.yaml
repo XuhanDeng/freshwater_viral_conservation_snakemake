@@ -1,0 +1,10 @@
+name: bowtie2
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+  - https://repo.anaconda.com/pkgs/main
+  - https://repo.anaconda.com/pkgs/r
+dependencies:
+  - bowtie2=2.5.4
+  

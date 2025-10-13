@@ -1,0 +1,19 @@
+# Snakemake
+.snakemake/
+log/
+results/
+
+# Data files
+input/
+test_raw/
+database/
+
+# macOS
+.DS_Store
+
+# HTML files
+*.html
+
+# Backup files
+*copy*
+*_origin*

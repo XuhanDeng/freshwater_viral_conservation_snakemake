@@ -1,0 +1,12 @@
+executor: slurm
+jobs: 20
+use-conda: true
+retries: 3
+keep-going: true
+printshellcmds: true
+slurm-no-account: true
+
+default-resources:
+  - slurm_account=research-as-bt
+  - runtime=240
+  - mem_mb_per_cpu=3000
