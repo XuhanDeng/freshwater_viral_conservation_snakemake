@@ -32,7 +32,7 @@ This pipeline performs comprehensive viral metagenome analysis from raw sequenci
 - **Multi-tool viral identification**: Integrates GeNomad, VirSorter2, and DeepVirFinder for high-confidence viral detection
 - **ANI-based clustering**: Uses CheckV's clustering method for accurate viral population delineation
 - **Dual-level analysis**: Performs both per-sample and cross-sample clustering
-- **Combined reference mapping**: Maps reads to both T7 control and viral contigs simultaneously
+- **Spike-in normalization**: Maps reads to both T7 internal control and viral contigs for normalization
 - **Comprehensive abundance metrics**: Calculates TPM, mean coverage, and read counts
 - **SLURM-optimized**: Ready for high-performance computing environments
 - **Fully reproducible**: Conda/Mamba-managed dependencies
@@ -45,7 +45,7 @@ The complete pipeline consists of 21 integrated steps organized into five major 
 
 ### Phase 1: Quality Control (Steps 1-2)
 - Adapter trimming and quality filtering with fastp
-- T7 phage host sequence removal with Bowtie2
+- T7 phage spike-in control removal for assembly with Bowtie2
 
 ### Phase 2: Assembly (Steps 3-4)
 - Metagenomic assembly with SPAdes metaSPAdes mode
@@ -87,9 +87,17 @@ Parameters:
 - Unpaired reads: `{sample}_U1.fq.gz`, `{sample}_U2.fq.gz`
 - QC reports: HTML and JSON formats
 
-#### Step 2: T7 Phage Host Removal
+#### Step 2: T7 Phage Spike-in Control Removal (for Assembly)
 **Tool**: Bowtie2 v2.5.0
-**Purpose**: Remove reads mapping to T7 phage reference (control organism)
+**Purpose**: Remove reads mapping to T7 phage spike-in control before assembly
+
+**Background**: T7 phage is added as an **internal spike-in control** during wet lab sample processing to:
+- Monitor DNA extraction efficiency
+- Assess sequencing depth consistency
+- Provide normalization standard across samples
+- Quality control for the experimental workflow
+
+**Note**: T7 reads are removed before assembly to avoid assembling the control sequence, but are **retained in fastp-processed reads** used for abundance quantification (see Step 18).
 
 ```yaml
 Parameters:
@@ -316,9 +324,10 @@ bowtie2-build combined_with_T7.fasta cluster_index
 ```
 
 **Rationale**:
-- Simultaneously quantify T7 control and viral contigs
-- Account for T7 contamination in abundance estimates
-- Provide internal standard for normalization
+- Simultaneously quantify T7 spike-in control and viral contigs
+- T7 abundance serves as internal standard for cross-sample normalization
+- Monitor T7 recovery to assess DNA extraction efficiency
+- Single alignment step for both control and target sequences
 
 **Outputs**:
 - Per-sample indices: One per sample with sample-specific representatives
@@ -343,10 +352,11 @@ Post-processing:
   - samtools index: Create BAI index
 ```
 
-**Why fastp reads?**
-- Includes T7 sequences for accurate T7 quantification
-- Higher quality than raw reads
-- No host contamination already removed
+**Why fastp reads (not T7-removed reads)?**
+- **Includes T7 sequences**: Essential for quantifying the spike-in control
+- **Internal standard**: T7 abundance enables normalization across samples
+- **Quality controlled**: Adapter-trimmed and quality-filtered
+- **Experimental control**: T7 levels indicate DNA extraction/sequencing consistency
 
 #### Step 19a & 19b: Abundance Calculation
 
@@ -406,10 +416,11 @@ no_zeros: true (exclude zero-abundance contigs)
 **Innovation**: Integrates T7 phage reference with cluster representatives for comprehensive abundance profiling
 
 **Benefits**:
-- Simultaneous quantification of control and target sequences
-- Internal standard for cross-sample normalization
-- Detection of T7 contamination
-- Improved mapping specificity
+- Simultaneous quantification of spike-in control and viral targets
+- T7 as internal standard for cross-sample normalization
+- Quality control through T7 recovery monitoring
+- Assess DNA extraction and sequencing efficiency
+- Enables accurate abundance comparison across samples
 
 ### 2. Multi-Tool Viral Validation
 **Approach**: Consensus-based identification using three complementary tools
@@ -448,9 +459,10 @@ no_zeros: true (exclude zero-abundance contigs)
 **Approach**: Use fastp-processed reads rather than T7-removed reads
 
 **Rationale**:
-- Retain T7 sequences for control quantification
+- Retain T7 sequences for spike-in control quantification
 - High-quality reads (adapter-trimmed, quality-filtered)
-- Consistent input for both T7 and viral mapping
+- Enables normalization using T7 as internal standard
+- Consistent input for both control and viral mapping
 
 ### 6. SLURM-Optimized Workflow
 **Features**:
@@ -820,7 +832,7 @@ results/
 │       ├── {sample}.fastp.html # QC report
 │       └── {sample}.fastp.json # QC metrics
 │
-├── 2_T7_removal/               # Host removal results
+├── 2_T7_removal/               # T7 spike-in control removal results
 │   └── 5_removed_sequence/
 │       └── {sample}/
 │           ├── {sample}_host_removed_R1.fastq.gz
