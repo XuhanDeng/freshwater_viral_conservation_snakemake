@@ -2,13 +2,18 @@ configfile: "profiles/config.yaml"
 
 rule all:
     input:
-        expand("results/10_cluster/1_filtered_seq/{sample}_filterd_final_vircontig.fasta", sample=config["samples"]),
-        expand("results/10_cluster/3_clustered/per_sample/{sample}/{sample}_cluster.tsv", sample=config["samples"]),
-        expand("results/10_cluster/4_cluster_fasta/{sample}_cluster_representatives.fasta", sample=config["samples"]),
-        "results/10_cluster/3_clustered/all_samples_cluster.tsv",
-        "results/10_cluster/4_cluster_fasta/all_samples_cluster_representatives.fasta",
+        # Step 19a: Abundance calculation per sample
         expand("results/11_bowtie2/per_sample/{sample}/{sample}_TPM.tsv", sample=config["samples"]),
-        expand("results/11_bowtie2/all_samples/{sample}/{sample}_TPM.tsv", sample=config["samples"])
+        expand("results/11_bowtie2/per_sample/{sample}/{sample}_mean.tsv", sample=config["samples"]),
+        expand("results/11_bowtie2/per_sample/{sample}/{sample}_count.tsv", sample=config["samples"]),
+        # Step 19b: Abundance calculation all samples
+        expand("results/11_bowtie2/all_samples/{sample}/{sample}_TPM.tsv", sample=config["samples"]),
+        expand("results/11_bowtie2/all_samples/{sample}/{sample}_mean.tsv", sample=config["samples"]),
+        expand("results/11_bowtie2/all_samples/{sample}/{sample}_count.tsv", sample=config["samples"]),
+        # Step 20a: GeNomad annotation per sample
+        expand("results/12_taxonomy/genomad/per_sample/{sample}", sample=config["samples"]),
+        # Step 20b: GeNomad annotation all samples
+        "results/12_taxonomy/genomad/all_samples"
 # Step 1: Quality control with fastp
 rule fastp_quality_control:
     input:
@@ -356,7 +361,7 @@ rule deepvirfinder_identification:
 
 
 
-# "--------------------------------------------------------"
+"--------------------------------------------------------"
 
 
 
@@ -532,11 +537,11 @@ rule cluster_per_sample:
         out="log/15_cluster_per_sample/{sample}_cluster.log",
         err="log/15_cluster_per_sample/{sample}_cluster.err"
     resources:
-        slurm_partition="compute,memory",
+        slurm_partition="compute",
         runtime = 7200,
         mem_mb_per_cpu = 3900,
-        cpus_per_task = 32,
-        slurm_account = "research-as-bt"
+        cpus_per_task = 8,
+        slurm_account = config["slurm_account"] 
     shell:
         """
         mkdir -p results/10_cluster/3_clustered/per_sample/{wildcards.sample}
@@ -594,16 +599,21 @@ rule cluster_all_samples:
         out="log/15_cluster_all/cluster_all.log",
         err="log/15_cluster_all/cluster_all.err"
     resources:
-        slurm_partition="compute,memory",
+        slurm_partition="compute",
         runtime = 7200,
         mem_mb_per_cpu = 3900,
-        cpus_per_task = 32,
-        slurm_account = "research-as-bt"
+        cpus_per_task = 16,
+        slurm_account = config["slurm_account"]
     shell:
         """
         mkdir -p results/10_cluster/2_combined
         mkdir -p results/10_cluster/3_clustered
         mkdir -p log/15_cluster_all
+
+        # Show which samples were selected
+        echo "Selected samples for clustering:" >> {log.out}
+        echo "{config[samples]}" >> {log.out}
+        echo "" >> {log.out}
 
         # Combine all filtered sequences
         cat {input} > {output.combined}
@@ -661,14 +671,14 @@ rule extract_representatives_per_sample:
         runtime=240,
         mem_mb_per_cpu=3000,
         cpus_per_task=2,
-        slurm_account="research-as-bt"
+        slurm_account=config["slurm_account"]   
     shell:
         """
         mkdir -p log/16_extract_representatives
         mkdir -p results/10_cluster/4_cluster_fasta
 
         # Extract representative sequences (cluster centroids)
-        cut -f 2 {input.cluster_results} | seqkit grep -f - -w 0 {input.fasta} > {output.representatives} \
+        cut -f 1 {input.cluster_results} | seqkit grep -f - -w 0 {input.fasta} > {output.representatives} \
             2> {log.err}
 
         # Copy to 4_cluster_fasta directory
@@ -692,25 +702,27 @@ rule extract_representatives_all_samples:
         runtime=240,
         mem_mb_per_cpu=3000,
         cpus_per_task=2,
-        slurm_account="research-as-bt"
+        slurm_account=config["slurm_account"]
     shell:
         """
         mkdir -p log/16_extract_representatives
         mkdir -p results/10_cluster/4_cluster_fasta
 
         # Extract representative sequences (cluster centroids)
-        cut -f 2 {input.cluster_results} | seqkit grep -f - -w 0 {input.combined} > {output.representatives} \
+        cut -f 1 {input.cluster_results} | seqkit grep -f - -w 0 {input.combined} > {output.representatives} \
             2> {log.err}
 
         # Copy to 4_cluster_fasta directory
         cp {output.representatives} {output.copied}
         """
 
-# Step 17a: Build bowtie2 index for per-sample representative sequences
+# Step 17a: Build bowtie2 index for per-sample representative sequences (including T7)
 rule build_cluster_index_per_sample:
     input:
-        representatives="results/10_cluster/4_cluster_fasta/{sample}_cluster_representatives.fasta"
+        representatives="results/10_cluster/4_cluster_fasta/{sample}_cluster_representatives.fasta",
+        t7_ref=config["bowtie2_index"]
     output:
+        combined="results/10_cluster/5_bowtie_index/per_sample/{sample}/combined_with_T7.fasta",
         flag="results/10_cluster/5_bowtie_index/per_sample/{sample}/cluster_index.done"
     conda: "envs/bowtie2.yaml"
     log:
@@ -728,18 +740,23 @@ rule build_cluster_index_per_sample:
         mkdir -p results/10_cluster/5_bowtie_index/per_sample/{wildcards.sample}
         mkdir -p log/17_build_cluster_index
 
-        # Build bowtie2 index
-        bowtie2-build {input.representatives} results/10_cluster/5_bowtie_index/per_sample/{wildcards.sample}/cluster_index \
+        # Combine T7 reference with cluster representatives
+        cat {input.t7_ref} {input.representatives} > {output.combined}
+
+        # Build bowtie2 index with combined sequences
+        bowtie2-build {output.combined} results/10_cluster/5_bowtie_index/per_sample/{wildcards.sample}/cluster_index \
             > {log.out} 2> {log.err}
 
         touch {output.flag}
         """
 
-# Step 17b: Build bowtie2 index for all samples representative sequences
+# Step 17b: Build bowtie2 index for all samples representative sequences (including T7)
 rule build_cluster_index_all_samples:
     input:
-        representatives="results/10_cluster/4_cluster_fasta/all_samples_cluster_representatives.fasta"
+        representatives="results/10_cluster/4_cluster_fasta/all_samples_cluster_representatives.fasta",
+        t7_ref=config["bowtie2_index"]
     output:
+        combined="results/10_cluster/5_bowtie_index/all_samples/combined_with_T7.fasta",
         flag="results/10_cluster/5_bowtie_index/all_samples/cluster_index.done"
     conda: "envs/bowtie2.yaml"
     log:
@@ -757,8 +774,11 @@ rule build_cluster_index_all_samples:
         mkdir -p results/10_cluster/5_bowtie_index/all_samples
         mkdir -p log/17_build_cluster_index
 
-        # Build bowtie2 index
-        bowtie2-build {input.representatives} results/10_cluster/5_bowtie_index/all_samples/cluster_index \
+        # Combine T7 reference with cluster representatives
+        cat {input.t7_ref} {input.representatives} > {output.combined}
+
+        # Build bowtie2 index with combined sequences
+        bowtie2-build {output.combined} results/10_cluster/5_bowtie_index/all_samples/cluster_index \
             > {log.out} 2> {log.err}
 
         touch {output.flag}
@@ -767,8 +787,8 @@ rule build_cluster_index_all_samples:
 # Step 18a: Bowtie2 alignment for per-sample clusters
 rule bowtie2_alignment_per_sample:
     input:
-        r1="results/2_T7_removal/5_removed_sequence/{sample}/{sample}_host_removed_R1.fastq.gz",
-        r2="results/2_T7_removal/5_removed_sequence/{sample}/{sample}_host_removed_R2.fastq.gz",
+        r1="results/1_fastp/{sample}/{sample}_1P.fq.gz",
+        r2="results/1_fastp/{sample}/{sample}_2P.fq.gz",
         index_flag="results/10_cluster/5_bowtie_index/per_sample/{sample}/cluster_index.done"
     output:
         bam="results/11_bowtie2/per_sample/{sample}/{sample}.f2.sorted.bam",
@@ -811,8 +831,8 @@ rule bowtie2_alignment_per_sample:
 # Step 18b: Bowtie2 alignment for all samples clusters (all samples align to combined clusters)
 rule bowtie2_alignment_all_samples:
     input:
-        r1="results/2_T7_removal/5_removed_sequence/{sample}/{sample}_host_removed_R1.fastq.gz",
-        r2="results/2_T7_removal/5_removed_sequence/{sample}/{sample}_host_removed_R2.fastq.gz",
+        r1="results/1_fastp/{sample}/{sample}_1P.fq.gz",
+        r2="results/1_fastp/{sample}/{sample}_2P.fq.gz",
         index_flag="results/10_cluster/5_bowtie_index/all_samples/cluster_index.done"
     output:
         bam="results/11_bowtie2/all_samples/{sample}/{sample}.f2.sorted.bam",
@@ -957,3 +977,60 @@ rule calculate_abundance_all_samples:
             --no-zeros -t {threads} \
             >> {log.out} 2>> {log.err}
         """
+
+# Step 20a: GeNomad annotation for per-sample cluster representatives
+rule genomad_annotate_per_sample:
+    input:
+        cluster_fasta="results/10_cluster/4_cluster_fasta/{sample}_cluster_representatives.fasta"
+    output:
+        directory("results/12_taxonomy/genomad/per_sample/{sample}")
+    conda: "envs/genomad.yaml"
+    log:
+        out="log/20_genomad_annotate/per_sample/{sample}_genomad_annotate.log",
+        err="log/20_genomad_annotate/per_sample/{sample}_genomad_annotate.err"
+    threads: config["genomad"]["threads"]
+    resources:
+        slurm_partition=config["regular_partition"],
+        runtime=config["runtime"],
+        mem_mb_per_cpu=config["regular_memory"],
+        cpus_per_task=config["genomad"]["threads"],
+        slurm_account=config["slurm_account"]
+    params:
+        db=config["genomad_db"]
+    shell:
+        """
+        mkdir -p results/12_taxonomy/genomad/per_sample
+        mkdir -p log/20_genomad_annotate/per_sample
+
+        genomad annotate {input.cluster_fasta} {output} {params.db} -t {threads} \
+            > {log.out} 2> {log.err}
+        """
+
+# Step 20b: GeNomad annotation for all samples cluster representatives
+rule genomad_annotate_all_samples:
+    input:
+        cluster_fasta="results/10_cluster/4_cluster_fasta/all_samples_cluster_representatives.fasta"
+    output:
+        directory("results/12_taxonomy/genomad/all_samples")
+    conda: "envs/genomad.yaml"
+    log:
+        out="log/20_genomad_annotate/all_samples_genomad_annotate.log",
+        err="log/20_genomad_annotate/all_samples_genomad_annotate.err"
+    threads: config["genomad"]["threads"]
+    resources:
+        slurm_partition=config["regular_partition"],
+        runtime=config["runtime"],
+        mem_mb_per_cpu=config["regular_memory"],
+        cpus_per_task=config["genomad"]["threads"],
+        slurm_account=config["slurm_account"]
+    params:
+        db=config["genomad_db"]
+    shell:
+        """
+        mkdir -p results/12_taxonomy/genomad
+        mkdir -p log/20_genomad_annotate
+
+        genomad annotate {input.cluster_fasta} {output} {params.db} -t {threads} \
+            > {log.out} 2> {log.err}
+        """
+

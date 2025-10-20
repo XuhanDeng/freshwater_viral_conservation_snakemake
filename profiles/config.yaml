@@ -1,11 +1,8 @@
 # Snakemake SLURM profile configuration
 # Generic configuration - users should customize for their system
 samples:
-  # - test
   - day0_1
   - day0_2
-  # # #- day0_4_DN1
-  # # #- day0_DN2
   - day14_20_2
   - day14_4_1
   - day14_80_1
@@ -90,7 +87,7 @@ cluster_index_build:
   partition: "compute"
 
 bowtie2_alignment:
-  threads: 16
+  threads: 8
   runtime: 7200
   mem_mb_per_cpu: 2000
   partition: "compute"
