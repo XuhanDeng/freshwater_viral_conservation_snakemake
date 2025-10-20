@@ -253,18 +253,34 @@ Strategy:
 
 #### Step 12: Quality-based Filtering
 **Script**: `checkv_sec_filter.py`
-**Purpose**: Apply stringent quality thresholds
+**Purpose**: Apply hallmark gene-based filtering using CheckV and original tool predictions
+
+**Filtering strategy**: UNION of three filters (sequences passing ANY filter are kept)
 
 ```yaml
-Filtering criteria:
-  - completeness ≥ 50% OR quality = "Complete" OR quality = "High-quality"
-  - contamination < 5%
-  - viral_genes ≥ 3
-  - Remove proviruses with host_genes > 10
+Filter 1 - VirSorter2 re-check:
+  - hallmark > 0 (at least 1 hallmark gene)
+  - full/partial = "full" (complete sequences only)
+
+Filter 2 - GeNomad re-check:
+  - topology != "Provirus" (exclude proviruses)
+  - n_hallmarks > 0 (at least 1 hallmark gene)
+
+Filter 3 - CheckV quality:
+  - viral_genes > 0 (at least 1 viral gene detected)
 ```
 
+**Approach**:
+1. Re-check original VirSorter2 predictions for hallmark genes
+2. Re-check original GeNomad predictions for hallmark genes
+3. Check CheckV viral gene count
+4. Take UNION of sequences passing any filter
+5. Final list includes sequences with viral hallmark evidence
+
+**Rationale**: Ensures retained sequences have viral hallmark genes or viral gene signatures, reducing false positives while maintaining broad sensitivity.
+
 #### Step 13: Extract Final Viral Sequences
-**Output**: High-quality viral contigs for downstream analysis
+**Output**: High-quality viral contigs with hallmark gene support for downstream analysis
 
 ### Phase 5: Clustering and Representative Selection
 
