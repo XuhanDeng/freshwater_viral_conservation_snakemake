@@ -567,39 +567,28 @@ git clone https://github.com/XuhanDeng/freshwater_viral_conservation_snakemake.g
 cd freshwater_viral_conservation_snakemake
 ```
 
-### Step 2: Set Up Conda Environments
+### Step 2: Install Snakemake
 
-**Option A: Install Mamba (Recommended - much faster)**
+**Option A: Install Snakemake with Mamba (Recommended - fastest)**
 ```bash
+# Install Mamba first (if not already installed)
 conda install -c conda-forge mamba
+
+# Create Snakemake environment with Mamba
+mamba create -c conda-forge -c bioconda -n snakemake snakemake
 ```
 
-**Option B: Use existing Conda**
-
-**Create all environments**:
+**Option B: Install Snakemake with Conda**
 ```bash
-# Using Mamba (recommended)
-for env in envs/*.yaml; do
-    mamba env create -f $env
-done
-
-# OR using Conda
-for env in envs/*.yaml; do
-    conda env create -f $env
-done
+conda create -c conda-forge -c bioconda -n snakemake snakemake
 ```
 
-**Environment list**:
-- `fastp`: Quality control
-- `bowtie2_samtools`: Alignment and BAM processing
-- `spades`: Assembly
-- `seqkit`: Sequence manipulation
-- `checkv`: Viral quality assessment
-- `genomad`: Viral identification and annotation
-- `vs2`: VirSorter2 environment
-- `dvf`: DeepVirFinder environment
-- `coverm`: Abundance calculation
-- `python`: Custom scripts
+**Activate Snakemake environment**:
+```bash
+conda activate snakemake
+```
+
+**Note**: Individual tool environments (fastp, bowtie2, spades, etc.) will be **automatically created** by Snakemake when you run the pipeline with `--use-conda` flag. You don't need to manually create them!
 
 ### Step 3: Download and Extract Databases
 
@@ -635,31 +624,39 @@ database/
     └── GCF_000844825.1_ViralProj14460_genomic.fna
 ```
 
-### Step 4: Set Up VirSorter2 Database
+### Step 4: Set Up VirSorter2 Database (Optional - can be done later)
 
-VirSorter2 requires a separate database download:
+VirSorter2 requires a separate database download (~10 GB). You can either:
 
+**Option A: Set up now (recommended)**
 ```bash
-# Activate VirSorter2 environment
+# Snakemake will auto-create vs2 environment when needed
+# Manually activate it to download database
+conda activate snakemake
+snakemake --snakefile Snakefile --use-conda --until virsorter2_identification --cores 1
+
+# OR manually set up if you prefer
+conda create -c bioconda -n vs2 virsorter=2
 conda activate vs2
-
-# Download VirSorter2 database (~10 GB)
 virsorter setup -d database/virsorter2-db -j 4
-
-# Deactivate
 conda deactivate
 ```
+
+**Option B: Let Snakemake handle it automatically**
+- Skip this step
+- VirSorter2 will download its database on first run
+- This happens automatically when the rule executes
 
 ### Step 5: Test Installation
 
 ```bash
-# Dry run to check setup
-snakemake --snakefile Snakefile --dry-run --cores 1
+# Make sure Snakemake environment is activated
+conda activate snakemake
 
-# Check conda environments
-conda env list
+# Dry run to check pipeline setup
+snakemake --snakefile Snakefile --dry-run --cores 1 --use-conda
 
-# Should show all environments listed above
+# This will show the execution plan without running anything
 ```
 
 ## Quick Start
