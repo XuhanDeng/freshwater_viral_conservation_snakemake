@@ -29,7 +29,7 @@ This pipeline performs comprehensive viral metagenome analysis from raw sequenci
 
 ### Key Capabilities
 
-- **Multi-tool viral identification**: Integrates GeNomad, VirSorter2, and DeepVirFinder for high-confidence viral detection
+- **Multi-tool viral identification**: Integrates GeNomad, VirSorter2, and DeepVirFinder with union-based approach for comprehensive viral detection
 - **ANI-based clustering**: Uses CheckV's clustering method for accurate viral population delineation
 - **Dual-level analysis**: Performs both per-sample and cross-sample clustering
 - **Spike-in normalization**: Maps reads to both T7 internal control and viral contigs for normalization
@@ -210,36 +210,39 @@ Assessments:
 
 #### Step 9: Merge Viral Predictions
 **Script**: `merge_3_viral_identification.py`
-**Purpose**: Consensus-based integration of three tool predictions
+**Purpose**: Union-based integration of three tool predictions
 
 ```yaml
 Strategy:
-  - Require ≥2 tools agreeing for high confidence
-  - Weighted scoring based on tool reliability
-  - GeNomad: weight 1.0
-  - VirSorter2: weight 1.0
-  - DeepVirFinder: weight 0.8
+  - UNION approach: Include sequences identified by ANY tool
+  - Apply tool-specific quality thresholds:
+    - DeepVirFinder: score ≥ 0.8 AND p-value < 0.05
+    - VirSorter2: max_score ≥ 0.8 AND full sequences only (not partial)
+    - GeNomad: Exclude proviruses (topology != "Provirus")
+  - No weighting or confidence scoring
+  - All predictions merged into single list
 ```
 
-**Consensus rules**:
-1. If all 3 tools agree → **High confidence**
-2. If 2/3 tools agree → **Medium confidence**
-3. If only 1 tool → **Low confidence** (filtered out)
+**Merging approach**:
+1. Filter each tool's predictions using quality thresholds
+2. Take UNION of all filtered sequences
+3. Label each sequence with which tool(s) detected it (tag1=dvf, tag2=vs2, tag3=genomad)
+4. All sequences pass to next step (no filtering by number of tools)
 
 **Output**:
-- `*_merged_results.csv`: Consolidated predictions
-- `*_merge3_list.txt`: IDs of high/medium confidence viruses
+- `*_merged_results.csv`: All predictions with tool labels (columns: name, tag1, tag2, tag3)
+- `*_merge3_list.txt`: List of all unique sequence IDs from any tool
 
 #### Step 10: Extract Viral Contigs
 **Tool**: seqkit grep
-**Purpose**: Extract sequences identified as viral by consensus
+**Purpose**: Extract sequences identified as viral by ANY tool
 
-**Input**: Merged viral ID list
-**Output**: `*_filterd_vircontig.fasta`
+**Input**: Merged viral ID list (union of all three tools)
+**Output**: `*_filterd_vircontig.fasta` (all sequences from union)
 
 #### Step 11: Second CheckV Analysis
 **Tool**: CheckV v1.0.1
-**Purpose**: Detailed quality assessment of consensus viral contigs
+**Purpose**: Detailed quality assessment of merged viral contigs
 
 **Metrics assessed**:
 - **Completeness**: Percentage of complete genome
@@ -422,16 +425,18 @@ no_zeros: true (exclude zero-abundance contigs)
 - Assess DNA extraction and sequencing efficiency
 - Enables accurate abundance comparison across samples
 
-### 2. Multi-Tool Viral Validation
-**Approach**: Consensus-based identification using three complementary tools
+### 2. Multi-Tool Viral Identification
+**Approach**: Union-based identification using three complementary tools with quality thresholds
 
-**Advantages**:
-- **Higher specificity**: Reduces false positives through consensus
+**Strategy**:
+- **Broad sensitivity**: UNION approach includes sequences detected by ANY tool
+- **Quality filtering**: Each tool has stringent thresholds (score ≥ 0.8, p < 0.05)
 - **Complementary detection**: Each tool has different strengths
-  - GeNomad: Gene-based, good for novel viruses
-  - VirSorter2: Hallmark gene detection, group-specific models
-  - DeepVirFinder: K-mer based, sequence composition
-- **Confidence scoring**: Rank predictions by tool agreement
+  - GeNomad: Gene-based, good for novel viruses, taxonomic assignment
+  - VirSorter2: Hallmark gene detection, group-specific models, provirus detection
+  - DeepVirFinder: K-mer based, sequence composition, fast screening
+- **Comprehensive capture**: Maximizes viral discovery by combining all tool outputs
+- **Tool tagging**: Track which tool(s) detected each sequence for downstream analysis
 
 ### 3. Dual Clustering Strategy
 **Two-level analysis**: Per-sample AND cross-sample clustering
